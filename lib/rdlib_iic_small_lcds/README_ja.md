@@ -1,51 +1,39 @@
-# DS18B20 #
+# RDLib_IIC_SmallLcds
 
-Arduino library for the Maxim Integrated DS18B20 1-Wire temperature sensor. This library is very simple and intuitive to use, and supports auto-discovering sensors with an optional high/low condition or manually addressing individual sensors.
+I2C I/F のAQMシリーズLCDを制御するライブラリーです
 
-For example, we can get the temperature from every sensor on the wire with just a few lines of code:
+## 概要
+このライブラリは、ArduinoでのI2Cデバイス操作によりAQMシリーズLCD(2x8/2x16)を制御できます  
+使用する電圧を指定(3.3V/5.0V)することでそれぞれ対応した初期値で初期化されます
 
-```
-#include <DS18B20.h>
+## 特徴
+- **シンプル**: APIの構成は、初期化、クリア、アップデートなどの単純な構成としております
+- **汎用性**: 標準的なI2C通信を用いるあらゆるデバイスで利用可能
+- **その他**: このライブラリーの他に「RDLib_IIC_RW_Base」ライブラリーが必要です
 
-DS18B20 ds(2);
+## インストール方法
+1. GitHubからこのリポジトリをZIP形式でダウンロードします。
+2. Arduino IDEを開き、「スケッチ」→「ライブラリをインクルード」→「.ZIP形式のライブラリをインストール...」を選択します。
+3. ダウンロードしたZIPファイルを選択してください。
+
+## 使い方
+基本的な使い方は以下の通りです。
+
+```cpp
+#include "rd_small_lcds.h"
+
+rd_iic_lcds AQM1602(IIC_ADDR_AQM1602, DEVICE_IS_5V0, LCD_TYPE_AQM1602);
 
 void setup() {
-  Serial.begin(9600);
+
+  //--- LCD AQM1602(5V駆動)
+  AQM1602.initialize();
+  memcpy(AQM1602.lcd_data_buff[LCD_BUF_LINE1], ">>>> Rinwado ...", 16);
+  memcpy(AQM1602.lcd_data_buff[LCD_BUF_LINE2], "RRH-G101A IoT-IC", 16);
+  delay(300);
+  AQM1602.display_update(AQM1602.lcd_data_buff[LCD_BUF_LINE1], 16, 0, AQM1602.lcd_data_buff[LCD_BUF_LINE2], 16, 0, LCD_NO_CLR, LINE_ALL);
 }
 
 void loop() {
-  while (ds.selectNext()) {
-    Serial.println(ds.getTempC());
-  }
 }
-```
 
-See the included [examples](/examples/) for more.
-
-## Installation ##
-
-This library uses the OneWire library, so you will need to have this installed. Install it using the Library Manager in the Arduino IDE or download the latest release from [GitHub](https://github.com/PaulStoffregen/OneWire).
-
-In the **OneWire.h** file set `ONEWIRE_SEARCH` to 0 since the search functionality is also implemented in this library (don't do this if you need the search functionality for other 1-Wire devices). CRC must be enabled (choose whichever algorithm you prefer). This may save some space on your Arduino.
-
-## Wiring the DS18B20 ##
-The resistor shown in all the circuit diagrams is 4.7k Ohm pullup resistor.
-
-### External Power Mode ###
-
-#### Single ####
-![A single externally powered DS18B20](/extras/single_external.png)
-
-#### Multiple ####
-![Multiple externally powered DS18B20s](/extras/multiple_external.png)
-
-### Parasitic Power Mode ###
-
-#### Single ####
-![A single parasite powered DS18B20](/extras/single_parasite.png)
-
-#### Multiple ####
-![Multiple parasite powered DS18B20s](/extras/multiple_parasite.png)
-
-### Mixed Power Mode ###
-![Mixed mode DS18B20s](/extras/mixed_mode.png)

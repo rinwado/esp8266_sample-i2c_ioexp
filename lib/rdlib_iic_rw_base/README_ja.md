@@ -1,51 +1,37 @@
-# DS18B20 #
+# RDLib_IIC_RW_Base
 
-Arduino library for the Maxim Integrated DS18B20 1-Wire temperature sensor. This library is very simple and intuitive to use, and supports auto-discovering sensors with an optional high/low condition or manually addressing individual sensors.
+I2C通信（読み書き）を簡略化するための、Rinwado共通ベースライブラリ
 
-For example, we can get the temperature from every sensor on the wire with just a few lines of code:
+## 概要
+このライブラリは、ArduinoでのI2Cデバイス操作をより直感的に行うことができる  
+レジスタのアドレス指定を伴う読み書きや、複数バイトの連続転送を実現
 
-```
-#include <DS18B20.h>
+## 特徴
+- **シンプル**: `Wire` ライブラリの手順をカプセル化
+- **汎用性**: 標準的なI2C通信を用いるあらゆるデバイスのベースとして利用可能
+- **その他**: タイムアウト、ＡＣＫポーリングや複合的な書込み読込動作
 
-DS18B20 ds(2);
+## インストール方法
+1. GitHubからこのリポジトリをZIP形式でダウンロードします。
+2. Arduino IDEを開き、「スケッチ」→「ライブラリをインクルード」→「.ZIP形式のライブラリをインストール...」を選択します。
+3. ダウンロードしたZIPファイルを選択してください。
+
+## 使い方
+基本的な使い方は以下の通りです。
+
+```cpp
+#include "rd_arduino_iic.h"
+
+rd_iic_base i2c_base(0x3E);
 
 void setup() {
-  Serial.begin(9600);
+  char wd[2];
+
+  Serial.begin(115200);
+  Wire.begin(4, 5);
+  wd[0]=0x00; wd[1]=0x38;
+  write_only(wd, 2, 100); //SA 0x3E に2byte 0x00, 0x38 を書込み、100uS delay
 }
 
 void loop() {
-  while (ds.selectNext()) {
-    Serial.println(ds.getTempC());
-  }
 }
-```
-
-See the included [examples](/examples/) for more.
-
-## Installation ##
-
-This library uses the OneWire library, so you will need to have this installed. Install it using the Library Manager in the Arduino IDE or download the latest release from [GitHub](https://github.com/PaulStoffregen/OneWire).
-
-In the **OneWire.h** file set `ONEWIRE_SEARCH` to 0 since the search functionality is also implemented in this library (don't do this if you need the search functionality for other 1-Wire devices). CRC must be enabled (choose whichever algorithm you prefer). This may save some space on your Arduino.
-
-## Wiring the DS18B20 ##
-The resistor shown in all the circuit diagrams is 4.7k Ohm pullup resistor.
-
-### External Power Mode ###
-
-#### Single ####
-![A single externally powered DS18B20](/extras/single_external.png)
-
-#### Multiple ####
-![Multiple externally powered DS18B20s](/extras/multiple_external.png)
-
-### Parasitic Power Mode ###
-
-#### Single ####
-![A single parasite powered DS18B20](/extras/single_parasite.png)
-
-#### Multiple ####
-![Multiple parasite powered DS18B20s](/extras/multiple_parasite.png)
-
-### Mixed Power Mode ###
-![Mixed mode DS18B20s](/extras/mixed_mode.png)
