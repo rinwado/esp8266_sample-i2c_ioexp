@@ -37,6 +37,7 @@
 #define LED_LD4                 (16)          //IO port 16 に接続されている　ＬＥＤ
 #define IO0_PIN                 (0)           //プログラムボタンと兼用[SW2/IN1]しているので、起動時の検出はできない
 #define IO2_PIN                 (2)           //IN2
+#define ADS_SAMP_T_PIN          (12)          //ADS サンプリングタイミング出力
 #define BUZZER_PIN              (13)          //ブザー制御出力　１でブザーＯＮ、０でブザーＯＦＦ
 #define SW2_ISOIN1              (0x01)        //0000_0001
 #define ISOIN2                  (0x02)        //0000_0010
@@ -55,12 +56,33 @@
 #define SET_ON                  (true)
 #define SET_OFF                 (false)
 
+#define INA826_REF_VOLT_CH1     (2501)  //mmV, リファレンス電圧値の微調整はここで調整
+#define INA826_REF_VOLT_CH2     (2500)  //mmV, リファレンス電圧値の微調整はここで調整
+#define PGA_6_144V              (0)
+#define PGA_4_096V              (1)
+#define PGA_2_048V              (2)
+#define PGA_1_024V              (4)
+#define PGA_0_512V              (8)
+#define PGA_0_256V              (16)
+#define ADS_MODE_CONTINUE       (0)
+#define ADS_MODE_ONCE           (1)
+
+#define ADS_DATARATE_8SPS       (0)
+#define ADS_DATARATE_16SPS      (1)
+#define ADS_DATARATE_32SPS      (2)
+#define ADS_DATARATE_64SPS      (3)
+#define ADS_DATARATE_128SPS     (4)
+#define ADS_DATARATE_250SPS     (5)
+#define ADS_DATARATE_475SPS     (6)
+#define ADS_DATARATE_860SPS     (7)
+
 #define NOF_TICK_CNT(ms)        (ms / 3.333)  //指定したｍｓ時間が Ticker 割込みでのカウントがいくつに相当するか
 #define JST_OFFSET              (9 * 3600)    //9時間 × 3600秒
 #define NTP_SERVER              "ntp.nict.jp"
 
 #define WIFI_FIXED_STR_LEN_MAX  (48)          //NULLターミネータ含めた文字数
 
+#if(0)
 //ネットワーク系デフォルト値
 #define DEF_WIFI_AP_ID			  "def_wi-fi"
 #define DEF_WIFI_AP_TK			  "def_password"
@@ -68,6 +90,7 @@
 #define DEF_FIX_GW            "192.168.0.254"
 #define DEF_FIX_SNM           "255.255.255.0"
 #define DEF_FIX_DNS           "192.168.0.254"
+#endif
 
 enum wState
 {	//Wi-Fi ステート
@@ -161,10 +184,13 @@ struct tm* p_timeInfo;
 void setup()
 {
   //--- IOピン出力設定
-  digitalWrite(BUZZER_PIN, LOW);  //BuzzerをOFF
-  digitalWrite(LED_LD4, HIGH);    //LED-LD4をON
+  digitalWrite(BUZZER_PIN, LOW);      //BuzzerをOFF
+  digitalWrite(LED_LD4, HIGH);        //LED-LD4をON
+  digitalWrite(ADS_SAMP_T_PIN, LOW);  //ADS サンプリングタイミング出力
+  
   //--- IOピン設定
-  pinMode(BUZZER_PIN, OUTPUT);    //リセットからこのコードが実行されるまでの間ブザーが鳴ります。実行されればブザーＯＦＦ）
+  pinMode(BUZZER_PIN, OUTPUT);        //リセットからこのコードが実行されるまでの間ブザーが鳴ります。実行されればブザーＯＦＦ）
+  pinMode(ADS_SAMP_T_PIN, OUTPUT);
   pinMode(LED_LD4, OUTPUT);
   pinMode(IO0_PIN, INPUT);
   pinMode(IO2_PIN, INPUT);
@@ -541,10 +567,18 @@ void MainWork_Callback(void)
 
         if(0 == prv_act_mode)
         { //前回までのモードが、通常モードの場合、次のADS1115によるデータ取得の準備
-          Serial.printf_P(PSTR("[D] Starting 4-channel ADC at 128sps. Will take approximately 40sec.\r\n")); 
+          Serial.printf_P(PSTR("[D] Starting 4-channel ADC at 860sps. Will take approximately 16sec.\r\n"));  //1ch当たり3.5～4ｍSでサンプリングしている
           data_cnt = 0;
           adc_ch = 0;
           memset((void*)data, 0, sizeof(data));
+          //計測条件セット
+          ADS.setGain(PGA_4_096V);                //ADS1X15_PGA_4_096V
+          ADS.setMode(ADS_MODE_ONCE);             //ADS1X15_MODE_ONCE
+          //ADS.setDataRate(ADS_DATARATE_128SPS);  //ADS1X15_DATARATE
+          //ADS.setDataRate(ADS_DATARATE_250SPS);  //ADS1X15_DATARATE
+          //ADS.setDataRate(ADS_DATARATE_475SPS);  //ADS1X15_DATARATE
+          ADS.setDataRate(ADS_DATARATE_860SPS);  //ADS1X15_DATARATE
+
           f_request_adc = false;
         }
         
@@ -564,7 +598,7 @@ void MainWork_Callback(void)
     case 1: //ADS1115によるデータ取得
       //state0 を回って戻ってくるので、約２ｍｓ間隔で処理
       if(f_ads_available)
-      { //ADS1115 OK
+      { //ADS1115 利用可能
         if(f_request_adc)
         { //ADC要求完了、データ取得と保存
           if(ADS.isReady())
@@ -583,10 +617,14 @@ void MainWork_Callback(void)
         { //ADC変換開始要求
           if(1024 > data_cnt)
           { //データサンプリング
-            ADS.setGain(1);         //ADS1X15_PGA_4_096V
-            ADS.setMode(1);         //ADS1X15_MODE_ONCE
-            ADS.setDataRate(4);     //ADS1X15_DATARATE_4
+            //このプログラムでは、1ch当たり3.5～4ｍSでサンプリングされる（ADS DATARATE は 860SPS）
+            //１つのチャンネルは、おおよそ１６ｍS間隔でサンプルイングされている
+            static uint8_t tcnt = 0;
+
             ADS.requestADC(adc_ch);
+            tcnt++;
+            digitalWrite(ADS_SAMP_T_PIN, (uint8_t)(tcnt%2));  //ADS サンプリングタイミング出力
+
             f_request_adc = true;
           }
           else
@@ -599,16 +637,16 @@ void MainWork_Callback(void)
               volt_mv[1] = (int)(((float)data[1][r] * f) + 0.5F);
               volt_mv[2] = (int)(((float)data[2][r] * f) + 0.5F);
               volt_mv[3] = (int)(((float)data[3][r] * f) + 0.5F);
-              Serial.printf_P(PSTR("[G] D[%04d]-CH0..3: %06d, %06d, %06d, %06d\r\n"), r, volt_mv[0], volt_mv[1], volt_mv[2], volt_mv[3]);
+              Serial.printf_P(PSTR("[G] D[%04d]-CH0..3: %05d, %05d, %05d, %05d\r\n"), r, volt_mv[0], volt_mv[1], volt_mv[2], volt_mv[3]);
             }
             data_cnt = 0;
             adc_ch = 0;
             memset((void*)data, 0, sizeof(data));
             f_request_adc = false;
-            Serial.printf_P(PSTR("[D] Starting 4-channel ADC at 128sps. Will take approximately 40sec.\r\n")); 
+            Serial.printf_P(PSTR("[D] Starting 4-channel ADC at 860sps. Will take approximately 16sec.\r\n"));  //1ch当たり3.5～4ｍSでサンプリングしている
           }
         }
-      }
+      } //if(f_ads_available)
 
       ret_state = state;
       state = 0;
@@ -860,21 +898,22 @@ void TskOneShot_ProcCallback(void)
       { //ADC ADS1115取得データ表示 (ここでのＡＤＣはブロッキングされえる)
         static int volt_mv[4] = {0};
 
-        ADS.setGain(1);     //ADS1X15_PGA_4_096V
-        ADS.setMode(1);     //ADS1X15_MODE_ONCE
-        ADS.setDataRate(4); //ADS1X15_DATARATE_4
-        adc_1st_data[0] = ADS.readADC(0);
-        adc_1st_data[1] = ADS.readADC(1);
-        adc_1st_data[2] = ADS.readADC(2);
-        adc_1st_data[3] = ADS.readADC(3);
+        ADS.setGain(PGA_6_144V);              //ADS1X15_PGA_6_144V
+        ADS.setMode(ADS_MODE_ONCE);           //ADS1X15_MODE_ONCE
+        ADS.setDataRate(ADS_DATARATE_64SPS);  //ADS1X15_DATARATE
+        //ＡＤＣ読込はブロッキング
+        adc_1st_data[0] = ADS.readADC(0);     //ch0
+        adc_1st_data[1] = ADS.readADC(1);     //ch1
+        adc_1st_data[2] = ADS.readADC(2);     //ch2
+        adc_1st_data[3] = ADS.readADC(3);     //ch3
 
         float f;
         f = ADS.toVoltage(1) * 1000.0F;  //voltage factor x1000　でｍV
-        volt_mv[0] = (int)(((float)adc_1st_data[0] * f) + 0.5F);
-        volt_mv[1] = (int)(((float)adc_1st_data[1] * f) + 0.5F);
+        volt_mv[0] = (int)(((float)adc_1st_data[0] * f) + 0.5F - (float)INA826_REF_VOLT_CH1);
+        volt_mv[1] = (int)(((float)adc_1st_data[1] * f) + 0.5F - (float)INA826_REF_VOLT_CH1);
         volt_mv[2] = (int)(((float)adc_1st_data[2] * f) + 0.5F);
         volt_mv[3] = (int)(((float)adc_1st_data[3] * f) + 0.5F);
-        Serial.printf_P(PSTR("ADC-CH0..3[mV]: %06d, %06d, %06d, %06d\r\n"), volt_mv[0], volt_mv[1], volt_mv[2], volt_mv[3]);
+        Serial.printf_P(PSTR("ADC-CH0..3[mV]: %05d, %05d, %05d, %05d\r\n"), volt_mv[0], volt_mv[1], volt_mv[2], volt_mv[3]);
       }
     } //if(!(gl_cnt100 & 0x03))
     gl_cnt100++;
